@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import pickle
@@ -5,72 +6,67 @@ import os
 import pdfplumber
 import matplotlib.pyplot as plt
 
-# ---------------------- PAGE SETTINGS ----------------------
+# ---------------------------------------------------
+# PAGE SETTINGS
+# ---------------------------------------------------
 st.set_page_config(page_title="Personal Finance Dashboard", layout="wide")
 st.title("💰 Personal Finance Analytics Dashboard")
 
-# ---------------------- DEBUG ----------------------
-st.write("Current directory:", os.getcwd())
-st.write("Root files:", os.listdir())
-
-if os.path.exists("models"):
-    st.write("Models folder files:", os.listdir("models"))
-else:
-    st.error("❌ models folder not found")
-
-# ---------------------- LOAD MODEL ----------------------
+# ---------------------------------------------------
+# LOAD MODEL (pipeline)
+# ---------------------------------------------------
 MODEL_PATH = "models/model.pkl"
-VECTORIZER_PATH = "models/vectorizer.pkl"
 
-try:
+model = None
+if os.path.exists(MODEL_PATH):
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
-    with open(VECTORIZER_PATH, "rb") as f:
-        vectorizer = pickle.load(f)
-except Exception as e:
-    st.error(f"❌ Error loading model/vectorizer: {e}")
-    st.stop()
+else:
+    st.error("❌ Model not found in models folder")
 
-# ---------------------- FILE UPLOAD ----------------------
+# ---------------------------------------------------
+# FILE UPLOAD
+# ---------------------------------------------------
 uploaded_file = st.file_uploader("📂 Upload CSV, Excel or PDF", type=["csv", "xlsx", "pdf"])
 
+# ---------------------------------------------------
+# MAIN LOGIC
+# ---------------------------------------------------
 if uploaded_file is not None:
     try:
-        # ----------- CSV -----------
+        # ---------------- READ FILE ----------------
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
-
-        # ----------- Excel -----------
         elif uploaded_file.name.endswith(".xlsx"):
             df = pd.read_excel(uploaded_file)
-
-        # ----------- PDF -----------
         elif uploaded_file.name.endswith(".pdf"):
-            text_data = ""
+            text_data = []
             with pdfplumber.open(uploaded_file) as pdf:
                 for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        # remove empty lines and extra spaces
-                        lines = [line.strip() for line in text.split("\n") if line.strip()]
-                        text_data += "\n".join(lines) + "\n"
-            # Each line becomes a row
-            df = pd.DataFrame({"Description": text_data.strip().split("\n")})
-
+                    tables = page.extract_tables()
+                    if tables:
+                        for table in tables:
+                            # Convert each table into a DataFrame
+                            temp_df = pd.DataFrame(table[1:], columns=table[0])
+                            text_data.append(temp_df)
+                    else:
+                        # Fallback: extract text lines if no tables
+                        lines = page.extract_text().split("\n")
+                        temp_df = pd.DataFrame(lines, columns=["Description"])
+                        text_data.append(temp_df)
+            df = pd.concat(text_data, ignore_index=True)
         else:
             st.error("Unsupported file type")
             st.stop()
-
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
         st.stop()
 
-    # ---------------------- CLEAN COLUMNS ----------------------
+    # ---------------- CLEAN COLUMNS ----------------
     df.columns = df.columns.astype(str)
     df.columns = df.columns.str.strip()
     df.columns = df.columns.str.replace(r'\s+', ' ', regex=True)
 
-    # ---------------------- AUTO-DETECT COLUMNS ----------------------
     description_col = None
     amount_col = None
     date_col = None
@@ -89,56 +85,71 @@ if uploaded_file is not None:
         st.stop()
 
     df.rename(columns={description_col: "Description"}, inplace=True)
+
     if amount_col:
         df.rename(columns={amount_col: "Amount"}, inplace=True)
         df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+
     if date_col:
         df.rename(columns={date_col: "Date"}, inplace=True)
 
     df = df.dropna(subset=["Description"])
 
-    # ---------------------- PREDICTION ----------------------
+    # ---------------- PREDICTION ----------------
     try:
-        # Always preprocess raw text BEFORE vectorization
-        raw_texts = df["Description"].astype(str).str.strip()  # keep text as string
-        X = vectorizer.transform(raw_texts)  # transform to numeric
-        df["Predicted Category"] = model.predict(X)
-
+        # Always pass raw text to the pipeline
+        df["Predicted Category"] = model.predict(df["Description"].astype(str).tolist())
     except Exception as e:
         st.error(f"❌ Prediction failed: {e}")
         st.stop()
 
-    # ---------------------- SIDEBAR INSIGHTS ----------------------
+    # ---------------------------------------------------
+    # SIDEBAR INSIGHTS
+    # ---------------------------------------------------
     st.sidebar.header("📌 Key Insights")
     st.sidebar.write("Total Transactions:", len(df))
     st.sidebar.write("Unique Categories:", df["Predicted Category"].nunique())
+
     if "Amount" in df.columns:
-        st.sidebar.write("Total Expense:", round(df["Amount"].sum(), 2))
+        total_expense = df["Amount"].sum()
+        st.sidebar.write("Total Expense:", round(total_expense, 2))
     else:
         st.sidebar.write("Total Expense: N/A")
 
-    # ---------------------- TABLE OUTPUT ----------------------
+    # ---------------------------------------------------
+    # TABLE OUTPUT
+    # ---------------------------------------------------
     st.subheader("📋 Prediction Results")
     st.dataframe(df, use_container_width=True)
 
-    # ---------------------- PIE CHART ----------------------
+    # ---------------------------------------------------
+    # PIE CHART WITH TOTALS
+    # ---------------------------------------------------
     st.subheader("📊 Expense Distribution by Category")
-    category_counts = df["Predicted Category"].value_counts()
-    if not category_counts.empty:
-        fig1, ax1 = plt.subplots()
-        ax1.pie(category_counts.values, labels=category_counts.index, autopct="%1.1f%%")
-        ax1.axis("equal")
-        st.pyplot(fig1)
-    else:
-        st.warning("No category data to display")
 
-    # ---------------------- MONTHLY TREND ----------------------
+    if "Amount" in df.columns:
+        category_expense = df.groupby("Predicted Category")["Amount"].sum()
+        if not category_expense.empty:
+            fig1, ax1 = plt.subplots()
+            labels = [f"{cat} (${amt:.2f})" for cat, amt in category_expense.items()]
+            ax1.pie(category_expense.values, labels=labels, autopct="%1.1f%%")
+            ax1.axis("equal")
+            st.pyplot(fig1)
+        else:
+            st.warning("No category expense data to display")
+    else:
+        st.warning("No Amount column available for expense distribution")
+
+    # ---------------------------------------------------
+    # MONTHLY TREND
+    # ---------------------------------------------------
     if "Date" in df.columns and "Amount" in df.columns:
         try:
             df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
             df = df.dropna(subset=["Date", "Amount"])
             df["Month"] = df["Date"].dt.to_period("M")
             monthly_expense = df.groupby("Month")["Amount"].sum()
+
             if not monthly_expense.empty:
                 st.subheader("📈 Monthly Expense Trend")
                 fig2, ax2 = plt.subplots()
@@ -149,6 +160,14 @@ if uploaded_file is not None:
         except Exception as e:
             st.warning(f"⚠ Could not generate monthly graph: {e}")
 
-    # ---------------------- DOWNLOAD BUTTON ----------------------
+    # ---------------------------------------------------
+    # DOWNLOAD BUTTON
+    # ---------------------------------------------------
     csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("⬇ Download Results as CSV", csv, "predicted_expenses.csv", "text/csv")
+    st.download_button(
+        "⬇ Download Results as CSV",
+        csv,
+        "predicted_expenses.csv",
+        "text/csv"
+    )
+
