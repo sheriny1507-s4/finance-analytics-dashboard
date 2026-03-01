@@ -36,22 +36,31 @@ uploaded_file = st.file_uploader("📂 Upload CSV, Excel or PDF", type=["csv", "
 
 if uploaded_file is not None:
     try:
+        # ----------- CSV -----------
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
+
+        # ----------- Excel -----------
         elif uploaded_file.name.endswith(".xlsx"):
             df = pd.read_excel(uploaded_file)
+
+        # ----------- PDF -----------
         elif uploaded_file.name.endswith(".pdf"):
             text_data = ""
             with pdfplumber.open(uploaded_file) as pdf:
                 for page in pdf.pages:
                     text = page.extract_text()
                     if text:
-                        text_data += text + "\n"
-            lines = text_data.split("\n")
-            df = pd.DataFrame(lines, columns=["Description"])
+                        # remove empty lines and extra spaces
+                        lines = [line.strip() for line in text.split("\n") if line.strip()]
+                        text_data += "\n".join(lines) + "\n"
+            # Each line becomes a row
+            df = pd.DataFrame({"Description": text_data.strip().split("\n")})
+
         else:
             st.error("Unsupported file type")
             st.stop()
+
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
         st.stop()
@@ -90,10 +99,11 @@ if uploaded_file is not None:
 
     # ---------------------- PREDICTION ----------------------
     try:
-        # Preprocess text BEFORE vectorization
-        texts = df["Description"].astype(str).str.lower().str.strip()
-        X = vectorizer.transform(texts)
+        # Always preprocess raw text BEFORE vectorization
+        raw_texts = df["Description"].astype(str).str.strip()  # keep text as string
+        X = vectorizer.transform(raw_texts)  # transform to numeric
         df["Predicted Category"] = model.predict(X)
+
     except Exception as e:
         st.error(f"❌ Prediction failed: {e}")
         st.stop()
@@ -142,4 +152,3 @@ if uploaded_file is not None:
     # ---------------------- DOWNLOAD BUTTON ----------------------
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button("⬇ Download Results as CSV", csv, "predicted_expenses.csv", "text/csv")
-
