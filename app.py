@@ -12,34 +12,47 @@ st.set_page_config(page_title="Personal Finance Dashboard", layout="wide")
 st.title("💰 Personal Finance Analytics Dashboard")
 
 # ---------------------------------------------------
-# LOAD MODEL (TUPLE SAFE)
+# DEBUG (remove after deployment works)
 # ---------------------------------------------------
-MODEL_PATH = r"C:\Users\Sherin Y\OneDrive\Desktop\finance_analytics\models\model.pkl"
+st.write("Current directory:", os.getcwd())
+st.write("Root files:", os.listdir())
 
-if not os.path.exists(MODEL_PATH):
-    st.error(f"❌ Model not found at: {MODEL_PATH}")
-    st.stop()
-
-with open(MODEL_PATH, "rb") as f:
-    loaded_obj = pickle.load(f)
-
-# HANDLE TUPLE (vectorizer, model)
-if isinstance(loaded_obj, tuple):
-    vectorizer, model = loaded_obj
+if os.path.exists("models"):
+    st.write("Models folder files:", os.listdir("models"))
 else:
-    vectorizer = None
-    model = loaded_obj
+    st.error("❌ models folder not found")
 
-st.sidebar.success("✅ Model Loaded")
+# ---------------------------------------------------
+# LOAD MODEL
+# ---------------------------------------------------
+MODEL_PATH = "models/model.pkl"
+VECTORIZER_PATH = "models/vectorizer.pkl"
+
+model = None
+vectorizer = None
+
+try:
+    if os.path.exists(MODEL_PATH):
+        with open(MODEL_PATH, "rb") as f:
+            model = pickle.load(f)
+
+    if os.path.exists(VECTORIZER_PATH):
+        with open(VECTORIZER_PATH, "rb") as f:
+            vectorizer = pickle.load(f)
+
+    if model is None:
+        st.error("❌ model.pkl not found inside models folder")
+        st.stop()
+
+except Exception as e:
+    st.error(f"❌ Error loading model: {e}")
+    st.stop()
 
 # ---------------------------------------------------
 # FILE UPLOAD
 # ---------------------------------------------------
 uploaded_file = st.file_uploader("📂 Upload CSV, Excel or PDF", type=["csv", "xlsx", "pdf"])
 
-# ---------------------------------------------------
-# MAIN LOGIC
-# ---------------------------------------------------
 if uploaded_file is not None:
 
     # ---------------- READ FILE ----------------
