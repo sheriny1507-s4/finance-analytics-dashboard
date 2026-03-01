@@ -1,4 +1,4 @@
-iimport streamlit as st
+import streamlit as st
 import pandas as pd
 import pickle
 import os
@@ -142,3 +142,4 @@ if uploaded_file is not None:
     # ---------------------- DOWNLOAD BUTTON ----------------------
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button("⬇ Download Results as CSV", csv, "predicted_expenses.csv", "text/csv")
+
