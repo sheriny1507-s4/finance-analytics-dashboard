@@ -12,18 +12,20 @@ st.set_page_config(page_title="Personal Finance Dashboard", layout="wide")
 
 st.title("💰 Personal Finance Analytics Dashboard")
 
-# ---------------------------------------------------
 # LOAD MODEL
-# ---------------------------------------------------
-MODEL_PATH = "model/model.pkl"
+import pathlib
+
+BASE_DIR = pathlib.Path(__file__).parent
+
+MODEL_PATH = BASE_DIR / "models" / "model.pkl"
 
 model = None
 
-if os.path.exists(MODEL_PATH):
+if MODEL_PATH.exists():
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
 else:
-    st.error("❌ model.pkl not found inside model folder")
+    st.error(f"❌ Model not found: {MODEL_PATH}")
     st.stop()
 
 # ---------------------------------------------------
