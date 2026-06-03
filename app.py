@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import pickle
@@ -10,164 +9,316 @@ import matplotlib.pyplot as plt
 # PAGE SETTINGS
 # ---------------------------------------------------
 st.set_page_config(page_title="Personal Finance Dashboard", layout="wide")
+
 st.title("💰 Personal Finance Analytics Dashboard")
 
 # ---------------------------------------------------
-# LOAD MODEL (pipeline)
+# LOAD MODEL
 # ---------------------------------------------------
-MODEL_PATH = "models/model.pkl"
+MODEL_PATH = "model/model.pkl"
 
 model = None
+
 if os.path.exists(MODEL_PATH):
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
 else:
-    st.error("❌ Model not found in models folder")
+    st.error("❌ model.pkl not found inside model folder")
+    st.stop()
 
 # ---------------------------------------------------
 # FILE UPLOAD
 # ---------------------------------------------------
-uploaded_file = st.file_uploader("📂 Upload CSV, Excel or PDF", type=["csv", "xlsx", "pdf"])
+uploaded_file = st.file_uploader(
+    "📂 Upload CSV, Excel or PDF",
+    type=["csv", "xlsx", "pdf"]
+)
 
 # ---------------------------------------------------
-# MAIN LOGIC
+# PROCESS FILE
 # ---------------------------------------------------
 if uploaded_file is not None:
+
     try:
-        # ---------------- READ FILE ----------------
+
+        # ---------------- CSV ----------------
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
+
+        # ---------------- EXCEL ----------------
         elif uploaded_file.name.endswith(".xlsx"):
             df = pd.read_excel(uploaded_file)
+
+        # ---------------- PDF ----------------
         elif uploaded_file.name.endswith(".pdf"):
+
             text_data = []
+
             with pdfplumber.open(uploaded_file) as pdf:
+
                 for page in pdf.pages:
+
                     tables = page.extract_tables()
+
                     if tables:
+
                         for table in tables:
-                            # Convert each table into a DataFrame
-                            temp_df = pd.DataFrame(table[1:], columns=table[0])
-                            text_data.append(temp_df)
+
+                            if len(table) > 1:
+
+                                temp_df = pd.DataFrame(
+                                    table[1:],
+                                    columns=table[0]
+                                )
+
+                                text_data.append(temp_df)
+
                     else:
-                        # Fallback: extract text lines if no tables
-                        lines = page.extract_text().split("\n")
-                        temp_df = pd.DataFrame(lines, columns=["Description"])
-                        text_data.append(temp_df)
+
+                        page_text = page.extract_text()
+
+                        if page_text:
+
+                            lines = page_text.split("\n")
+
+                            temp_df = pd.DataFrame(
+                                {"Description": lines}
+                            )
+
+                            text_data.append(temp_df)
+
+            if len(text_data) == 0:
+                st.error("❌ No readable data found in PDF")
+                st.stop()
+
             df = pd.concat(text_data, ignore_index=True)
+
+            st.subheader("📄 Extracted PDF Data")
+            st.write(df.head())
+
         else:
             st.error("Unsupported file type")
             st.stop()
+
     except Exception as e:
         st.error(f"❌ Error reading file: {e}")
         st.stop()
 
-    # ---------------- CLEAN COLUMNS ----------------
+    # ---------------------------------------------------
+    # CLEAN COLUMN NAMES
+    # ---------------------------------------------------
     df.columns = df.columns.astype(str)
-    df.columns = df.columns.str.strip()
-    df.columns = df.columns.str.replace(r'\s+', ' ', regex=True)
 
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.replace(r"\s+", " ", regex=True)
+    )
+
+    # ---------------------------------------------------
+    # DETECT COLUMNS
+    # ---------------------------------------------------
     description_col = None
     amount_col = None
     date_col = None
 
     for col in df.columns:
+
         col_lower = col.lower()
-        if any(k in col_lower for k in ["description", "details", "narration", "remarks"]):
+
+        if any(word in col_lower for word in
+               ["description", "details", "narration", "remarks"]):
             description_col = col
-        if any(k in col_lower for k in ["amount", "debit", "credit", "withdrawal", "bill"]):
+
+        if any(word in col_lower for word in
+               ["amount", "debit", "credit", "withdrawal", "bill"]):
             amount_col = col
-        if any(k in col_lower for k in ["date", "time"]):
+
+        if any(word in col_lower for word in
+               ["date", "time"]):
             date_col = col
 
+    # ---------------------------------------------------
+    # MANUAL DESCRIPTION SELECTION
+    # ---------------------------------------------------
     if description_col is None:
-        st.error("❌ No Description column found")
-        st.stop()
 
-    df.rename(columns={description_col: "Description"}, inplace=True)
+        st.warning("⚠ Description column not detected")
+
+        description_col = st.selectbox(
+            "Select Description Column",
+            df.columns.tolist()
+        )
+
+    # ---------------------------------------------------
+    # RENAME COLUMNS
+    # ---------------------------------------------------
+    df.rename(
+        columns={description_col: "Description"},
+        inplace=True
+    )
 
     if amount_col:
-        df.rename(columns={amount_col: "Amount"}, inplace=True)
-        df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+
+        df.rename(
+            columns={amount_col: "Amount"},
+            inplace=True
+        )
+
+        df["Amount"] = pd.to_numeric(
+            df["Amount"],
+            errors="coerce"
+        )
+
+        df = df.dropna(subset=["Amount"])
+
+        df = df[df["Amount"] > 0]
+
+    else:
+        df["Amount"] = 0
 
     if date_col:
-        df.rename(columns={date_col: "Date"}, inplace=True)
+
+        df.rename(
+            columns={date_col: "Date"},
+            inplace=True
+        )
 
     df = df.dropna(subset=["Description"])
 
-    # ---------------- PREDICTION ----------------
+    # ---------------------------------------------------
+    # PREDICTION
+    # ---------------------------------------------------
     try:
-        # Always pass raw text to the pipeline
-        df["Predicted Category"] = model.predict(df["Description"].astype(str).tolist())
+
+        df["Predicted Category"] = model.predict(
+            df["Description"].astype(str)
+        )
+
     except Exception as e:
+
         st.error(f"❌ Prediction failed: {e}")
         st.stop()
 
     # ---------------------------------------------------
-    # SIDEBAR INSIGHTS
+    # SIDEBAR
     # ---------------------------------------------------
     st.sidebar.header("📌 Key Insights")
-    st.sidebar.write("Total Transactions:", len(df))
-    st.sidebar.write("Unique Categories:", df["Predicted Category"].nunique())
 
-    if "Amount" in df.columns:
-        total_expense = df["Amount"].sum()
-        st.sidebar.write("Total Expense:", round(total_expense, 2))
-    else:
-        st.sidebar.write("Total Expense: N/A")
+    st.sidebar.metric(
+        "Total Transactions",
+        len(df)
+    )
+
+    st.sidebar.metric(
+        "Categories",
+        df["Predicted Category"].nunique()
+    )
+
+    total_expense = df["Amount"].sum()
+
+    st.sidebar.metric(
+        "Total Expense",
+        f"${total_expense:,.2f}"
+    )
 
     # ---------------------------------------------------
-    # TABLE OUTPUT
+    # TABLE
     # ---------------------------------------------------
     st.subheader("📋 Prediction Results")
-    st.dataframe(df, use_container_width=True)
+
+    st.dataframe(
+        df,
+        use_container_width=True
+    )
 
     # ---------------------------------------------------
-    # PIE CHART WITH TOTALS
+    # PIE CHART
     # ---------------------------------------------------
-    st.subheader("📊 Expense Distribution by Category")
-
     if "Amount" in df.columns:
-        category_expense = df.groupby("Predicted Category")["Amount"].sum()
-        if not category_expense.empty:
-            fig1, ax1 = plt.subplots()
-            labels = [f"{cat} (${amt:.2f})" for cat, amt in category_expense.items()]
-            ax1.pie(category_expense.values, labels=labels, autopct="%1.1f%%")
-            ax1.axis("equal")
-            st.pyplot(fig1)
-        else:
-            st.warning("No category expense data to display")
-    else:
-        st.warning("No Amount column available for expense distribution")
+
+        st.subheader(
+            "📊 Expense Distribution by Category"
+        )
+
+        category_expense = (
+            df.groupby("Predicted Category")["Amount"]
+            .sum()
+        )
+
+        category_expense = category_expense[
+            category_expense > 0
+        ]
+
+        if len(category_expense) > 0:
+
+            try:
+
+                fig1, ax1 = plt.subplots()
+
+                ax1.pie(
+                    category_expense.values,
+                    labels=category_expense.index,
+                    autopct="%1.1f%%"
+                )
+
+                ax1.axis("equal")
+
+                st.pyplot(fig1)
+
+            except:
+
+                st.warning(
+                    "Pie chart failed"
+                )
 
     # ---------------------------------------------------
     # MONTHLY TREND
     # ---------------------------------------------------
-    if "Date" in df.columns and "Amount" in df.columns:
+    if "Date" in df.columns:
+
         try:
-            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-            df = df.dropna(subset=["Date", "Amount"])
-            df["Month"] = df["Date"].dt.to_period("M")
-            monthly_expense = df.groupby("Month")["Amount"].sum()
 
-            if not monthly_expense.empty:
-                st.subheader("📈 Monthly Expense Trend")
+            df["Date"] = pd.to_datetime(
+                df["Date"],
+                errors="coerce"
+            )
+
+            monthly = (
+                df.groupby(
+                    df["Date"].dt.to_period("M")
+                )["Amount"]
+                .sum()
+            )
+
+            if len(monthly) > 0:
+
+                st.subheader(
+                    "📈 Monthly Expense Trend"
+                )
+
                 fig2, ax2 = plt.subplots()
-                monthly_expense.plot(kind="line", ax=ax2)
+
+                monthly.plot(
+                    kind="line",
+                    ax=ax2
+                )
+
                 st.pyplot(fig2)
-            else:
-                st.warning("No monthly data available")
-        except Exception as e:
-            st.warning(f"⚠ Could not generate monthly graph: {e}")
+
+        except:
+            pass
 
     # ---------------------------------------------------
-    # DOWNLOAD BUTTON
+    # DOWNLOAD
     # ---------------------------------------------------
-    csv = df.to_csv(index=False).encode("utf-8")
+    csv = df.to_csv(
+        index=False
+    ).encode("utf-8")
+
     st.download_button(
-        "⬇ Download Results as CSV",
-        csv,
-        "predicted_expenses.csv",
-        "text/csv"
+        label="⬇ Download Results as CSV",
+        data=csv,
+        file_name="predicted_expenses.csv",
+        mime="text/csv"
     )
-
