@@ -5,6 +5,8 @@ import os
 import pdfplumber
 import matplotlib.pyplot as plt
 from login import login
+import os
+import pickle
 
 # ==========================================
 # PAGE CONFIG
@@ -62,13 +64,23 @@ st.markdown("---")
 # ==========================================
 # LOAD MODEL
 # ==========================================
-MODEL_PATH = os.path.join("model", "model.pkl")f)
+# ---------------------------------------------------
+# LOAD MODEL
+# ---------------------------------------------------
+
+MODEL_PATH = os.path.join("model", "model.pkl")
+
 if not os.path.exists(MODEL_PATH):
     st.error("❌ model.pkl not found")
+    st.info(f"Looking for model at: {MODEL_PATH}")
     st.stop()
 
-with open(MODEL_PATH, "rb") as f:
-    model = pickle.load(f)
+try:
+    with open(MODEL_PATH, "rb") as f:
+        model = pickle.load(f)
+except Exception as e:
+    st.error(f"❌ Error loading model: {e}")
+    st.stop()
 
 # ==========================================
 # FILE UPLOAD
