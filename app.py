@@ -11,6 +11,32 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Personal Finance Dashboard", layout="wide")
 
 st.title("💰 Personal Finance Analytics Dashboard")
+st.sidebar.success(
+    f"Welcome {st.session_state.get('username','User')}"
+)
+
+if st.sidebar.button("Logout"):
+
+    st.session_state["logged_in"] = False
+
+    if "username" in st.session_state:
+        del st.session_state["username"]
+
+    st.rerun()
+    st.markdown("---")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.info("📂 Upload CSV")
+
+with col2:
+    st.info("📊 Analyze Spending")
+
+with col3:
+    st.info("⬇ Download Reports")
+
+st.markdown("---")
 
 # LOAD MODEL
 import pathlib
