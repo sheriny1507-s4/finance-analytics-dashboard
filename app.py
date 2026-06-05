@@ -62,8 +62,7 @@ st.markdown("---")
 # ==========================================
 # LOAD MODEL
 # ==========================================
-MODEL_PATH = "model/model.pkl"
-
+MODEL_PATH = os.path.join("model", "model.pkl")f)
 if not os.path.exists(MODEL_PATH):
     st.error("❌ model.pkl not found")
     st.stop()
