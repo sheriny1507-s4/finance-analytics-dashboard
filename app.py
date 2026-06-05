@@ -4,26 +4,47 @@ import pickle
 import os
 import pdfplumber
 import matplotlib.pyplot as plt
+from login import login
 
-# ---------------------------------------------------
-# PAGE SETTINGS
-# ---------------------------------------------------
-st.set_page_config(page_title="Personal Finance Dashboard", layout="wide")
+# ==========================================
+# PAGE CONFIG
+# ==========================================
+st.set_page_config(
+    page_title="Personal Finance Dashboard",
+    layout="wide"
+)
 
+# ==========================================
+# LOGIN SYSTEM
+# ==========================================
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if not st.session_state["logged_in"]:
+    login()
+    st.stop()
+
+# ==========================================
+# HEADER
+# ==========================================
 st.title("💰 Personal Finance Analytics Dashboard")
+
 st.sidebar.success(
     f"Welcome {st.session_state.get('username','User')}"
 )
 
 if st.sidebar.button("Logout"):
-
     st.session_state["logged_in"] = False
 
     if "username" in st.session_state:
         del st.session_state["username"]
 
     st.rerun()
-    st.markdown("---")
+
+# ==========================================
+# DASHBOARD CARDS
+# ==========================================
+st.markdown("---")
 
 col1, col2, col3 = st.columns(3)
 
@@ -38,49 +59,45 @@ with col3:
 
 st.markdown("---")
 
+# ==========================================
 # LOAD MODEL
-import pathlib
+# ==========================================
+MODEL_PATH = "model/model.pkl"
 
-BASE_DIR = pathlib.Path(__file__).parent
-
-MODEL_PATH = BASE_DIR / "models" / "model.pkl"
-
-model = None
-
-if MODEL_PATH.exists():
-    with open(MODEL_PATH, "rb") as f:
-        model = pickle.load(f)
-else:
-    st.error(f"❌ Model not found: {MODEL_PATH}")
+if not os.path.exists(MODEL_PATH):
+    st.error("❌ model.pkl not found")
     st.stop()
 
-# ---------------------------------------------------
+with open(MODEL_PATH, "rb") as f:
+    model = pickle.load(f)
+
+# ==========================================
 # FILE UPLOAD
-# ---------------------------------------------------
+# ==========================================
 uploaded_file = st.file_uploader(
     "📂 Upload CSV, Excel or PDF",
     type=["csv", "xlsx", "pdf"]
 )
 
-# ---------------------------------------------------
+# ==========================================
 # PROCESS FILE
-# ---------------------------------------------------
+# ==========================================
 if uploaded_file is not None:
 
     try:
 
-        # ---------------- CSV ----------------
+        # CSV
         if uploaded_file.name.endswith(".csv"):
             df = pd.read_csv(uploaded_file)
 
-        # ---------------- EXCEL ----------------
+        # Excel
         elif uploaded_file.name.endswith(".xlsx"):
             df = pd.read_excel(uploaded_file)
 
-        # ---------------- PDF ----------------
+        # PDF
         elif uploaded_file.name.endswith(".pdf"):
 
-            text_data = []
+            dataframes = []
 
             with pdfplumber.open(uploaded_file) as pdf:
 
@@ -99,88 +116,91 @@ if uploaded_file is not None:
                                     columns=table[0]
                                 )
 
-                                text_data.append(temp_df)
+                                dataframes.append(temp_df)
 
                     else:
 
-                        page_text = page.extract_text()
+                        text = page.extract_text()
 
-                        if page_text:
+                        if text:
 
-                            lines = page_text.split("\n")
+                            lines = text.split("\n")
 
                             temp_df = pd.DataFrame(
                                 {"Description": lines}
                             )
 
-                            text_data.append(temp_df)
+                            dataframes.append(temp_df)
 
-            if len(text_data) == 0:
+            if len(dataframes) == 0:
                 st.error("❌ No readable data found in PDF")
                 st.stop()
 
-            df = pd.concat(text_data, ignore_index=True)
+            df = pd.concat(
+                dataframes,
+                ignore_index=True
+            )
 
             st.subheader("📄 Extracted PDF Data")
-            st.write(df.head())
+            st.dataframe(df.head())
 
         else:
-            st.error("Unsupported file type")
+            st.error("Unsupported file format")
             st.stop()
 
     except Exception as e:
-        st.error(f"❌ Error reading file: {e}")
+        st.error(f"Error reading file: {e}")
         st.stop()
 
-    # ---------------------------------------------------
+    # ==========================================
     # CLEAN COLUMN NAMES
-    # ---------------------------------------------------
-    df.columns = df.columns.astype(str)
-
+    # ==========================================
     df.columns = (
         df.columns
+        .astype(str)
         .str.strip()
-        .str.replace(r"\s+", " ", regex=True)
     )
 
-    # ---------------------------------------------------
+    # ==========================================
     # DETECT COLUMNS
-    # ---------------------------------------------------
+    # ==========================================
     description_col = None
     amount_col = None
     date_col = None
 
     for col in df.columns:
 
-        col_lower = col.lower()
+        c = col.lower()
 
-        if any(word in col_lower for word in
+        if any(word in c for word in
                ["description", "details", "narration", "remarks"]):
             description_col = col
 
-        if any(word in col_lower for word in
-               ["amount", "debit", "credit", "withdrawal", "bill"]):
+        if any(word in c for word in
+               ["amount", "debit", "credit", "bill"]):
             amount_col = col
 
-        if any(word in col_lower for word in
+        if any(word in c for word in
                ["date", "time"]):
             date_col = col
 
-    # ---------------------------------------------------
-    # MANUAL DESCRIPTION SELECTION
-    # ---------------------------------------------------
+    # ==========================================
+    # MANUAL COLUMN SELECTION
+    # ==========================================
     if description_col is None:
 
-        st.warning("⚠ Description column not detected")
+        st.warning(
+            "Description column not found."
+        )
 
         description_col = st.selectbox(
             "Select Description Column",
-            df.columns.tolist()
+            df.columns
         )
 
-    # ---------------------------------------------------
-    # RENAME COLUMNS
-    # ---------------------------------------------------
+    # ==========================================
+    # STANDARDIZE COLUMNS
+    # ==========================================
     df.rename(
         columns={description_col: "Description"},
         inplace=True
@@ -200,8 +220,6 @@ if uploaded_file is not None:
 
         df = df.dropna(subset=["Amount"])
 
-        df = df[df["Amount"] > 0]
-
     else:
         df["Amount"] = 0
 
@@ -212,11 +230,13 @@ if uploaded_file is not None:
             inplace=True
         )
 
-    df = df.dropna(subset=["Description"])
+    df = df.dropna(
+        subset=["Description"]
+    )
 
-    # ---------------------------------------------------
-    # PREDICTION
-    # ---------------------------------------------------
+    # ==========================================
+    # PREDICT CATEGORY
+    # ==========================================
     try:
 
         df["Predicted Category"] = model.predict(
@@ -225,12 +245,14 @@ if uploaded_file is not None:
 
     except Exception as e:
 
-        st.error(f"❌ Prediction failed: {e}")
+        st.error(
+            f"Prediction Failed: {e}"
+        )
         st.stop()
 
-    # ---------------------------------------------------
-    # SIDEBAR
-    # ---------------------------------------------------
+    # ==========================================
+    # SIDEBAR INSIGHTS
+    # ==========================================
     st.sidebar.header("📌 Key Insights")
 
     st.sidebar.metric(
@@ -250,9 +272,9 @@ if uploaded_file is not None:
         f"${total_expense:,.2f}"
     )
 
-    # ---------------------------------------------------
+    # ==========================================
     # TABLE
-    # ---------------------------------------------------
+    # ==========================================
     st.subheader("📋 Prediction Results")
 
     st.dataframe(
@@ -260,49 +282,39 @@ if uploaded_file is not None:
         use_container_width=True
     )
 
-    # ---------------------------------------------------
+    # ==========================================
     # PIE CHART
-    # ---------------------------------------------------
-    if "Amount" in df.columns:
+    # ==========================================
+    category_expense = (
+        df.groupby("Predicted Category")["Amount"]
+        .sum()
+    )
+
+    category_expense = category_expense[
+        category_expense > 0
+    ]
+
+    if len(category_expense) > 0:
 
         st.subheader(
             "📊 Expense Distribution by Category"
         )
 
-        category_expense = (
-            df.groupby("Predicted Category")["Amount"]
-            .sum()
+        fig1, ax1 = plt.subplots()
+
+        ax1.pie(
+            category_expense.values,
+            labels=category_expense.index,
+            autopct="%1.1f%%"
         )
 
-        category_expense = category_expense[
-            category_expense > 0
-        ]
+        ax1.axis("equal")
 
-        if len(category_expense) > 0:
+        st.pyplot(fig1)
 
-            try:
-
-                fig1, ax1 = plt.subplots()
-
-                ax1.pie(
-                    category_expense.values,
-                    labels=category_expense.index,
-                    autopct="%1.1f%%"
-                )
-
-                ax1.axis("equal")
-
-                st.pyplot(fig1)
-
-            except:
-
-                st.warning(
-                    "Pie chart failed"
-                )
-
-    # ---------------------------------------------------
+    # ==========================================
     # MONTHLY TREND
-    # ---------------------------------------------------
+    # ==========================================
     if "Date" in df.columns:
 
         try:
@@ -337,16 +349,16 @@ if uploaded_file is not None:
         except:
             pass
 
-    # ---------------------------------------------------
-    # DOWNLOAD
-    # ---------------------------------------------------
+    # ==========================================
+    # DOWNLOAD CSV
+    # ==========================================
     csv = df.to_csv(
         index=False
     ).encode("utf-8")
 
     st.download_button(
-        label="⬇ Download Results as CSV",
-        data=csv,
-        file_name="predicted_expenses.csv",
-        mime="text/csv"
+        "⬇ Download Results as CSV",
+        csv,
+        "predicted_expenses.csv",
+        "text/csv"
     )
