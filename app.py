@@ -68,12 +68,14 @@ st.markdown("---")
 # LOAD MODEL
 # ---------------------------------------------------
 
-MODEL_PATH = os.path.join("model", "model.pkl")
+MODEL_PATH = "model.pkl"
 
 if not os.path.exists(MODEL_PATH):
     st.error("❌ model.pkl not found")
-    st.info(f"Looking for model at: {MODEL_PATH}")
     st.stop()
+
+with open(MODEL_PATH, "rb") as f:
+    model = pickle.load(f)
 
 try:
     with open(MODEL_PATH, "rb") as f:
