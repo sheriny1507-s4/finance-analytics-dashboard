@@ -272,6 +272,18 @@ if uploaded_file is not None:
         use_container_width=True
     )
 
+    st.subheader("Debug Information")
+
+st.write("Columns:")
+st.write(df.columns.tolist())
+
+st.write("Amount Sum:")
+st.write(df["Amount"].sum())
+
+st.write("Category Expense:")
+st.write(
+    df.groupby("Predicted Category")["Amount"].sum()
+)
     # ==========================
     # PIE CHART
     # ==========================
