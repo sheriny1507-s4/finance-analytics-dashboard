@@ -6,7 +6,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 
 # Load dataset
-df = pd.read_csv("rule_based_labeled_dataset.csv")
+import pandas as pd
+
+df = pd.read_csv(
+    r"C:\Users\Sherin Y\OneDrive\Desktop\finance_analytics\data\rule_based_labeled_dataset.csv"
+)
 
 # Features and labels
 X = df["Description"]
