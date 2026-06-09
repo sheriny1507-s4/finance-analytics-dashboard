@@ -6,23 +6,21 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 
 # Load dataset
-import pandas as pd
+df = pd.read_csv("large_dataset.csv")
 
-df = pd.read_csv(
-    r"C:\Users\Sherin Y\OneDrive\Desktop\finance_analytics\data\rule_based_labeled_dataset.csv"
-)
-
-# Features and labels
+# Features
 X = df["Description"]
+
+# Labels
 y = df["Category"]
 
-# Create model pipeline
+# Create model
 model = Pipeline([
     ("tfidf", TfidfVectorizer()),
     ("classifier", MultinomialNB())
 ])
 
-# Train model
+# Train
 model.fit(X, y)
 
 # Save model
