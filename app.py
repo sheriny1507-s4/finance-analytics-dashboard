@@ -64,18 +64,11 @@ st.markdown("---")
 # ==========================================
 # LOAD MODEL
 # ==========================================
-# ---------------------------------------------------
-# LOAD MODEL
-# ---------------------------------------------------
-
-MODEL_PATH = "model.pkl"
+MODEL_PATH = os.path.join("models", "model.pkl")
 
 if not os.path.exists(MODEL_PATH):
-    st.error("❌ model.pkl not found")
+    st.error(f"❌ Model not found: {MODEL_PATH}")
     st.stop()
-
-with open(MODEL_PATH, "rb") as f:
-    model = pickle.load(f)
 
 try:
     with open(MODEL_PATH, "rb") as f:
@@ -219,22 +212,20 @@ if uploaded_file is not None:
         inplace=True
     )
 
-    if amount_col:
+    df["Amount"] = (
+    df["Amount"]
+    .astype(str)
+    .str.replace(",", "")
+    .str.replace("₹", "")
+    .str.replace("$", "")
+)
 
-        df.rename(
-            columns={amount_col: "Amount"},
-            inplace=True
-        )
+df["Amount"] = pd.to_numeric(
+    df["Amount"],
+    errors="coerce"
+)
 
-        df["Amount"] = pd.to_numeric(
-            df["Amount"],
-            errors="coerce"
-        )
-
-        df = df.dropna(subset=["Amount"])
-
-    else:
-        df["Amount"] = 0
+df["Amount"] = df["Amount"].fillna(0)
 
     if date_col:
 
@@ -243,25 +234,13 @@ if uploaded_file is not None:
             inplace=True
         )
 
-    df = df.dropna(
-        subset=["Description"]
-    )
+    
+st.write("Columns Found:")
+st.write(df.columns.tolist())
 
-    # ==========================================
-    # PREDICT CATEGORY
-    # ==========================================
-    try:
-
-        df["Predicted Category"] = model.predict(
-            df["Description"].astype(str)
-        )
-
-    except Exception as e:
-
-        st.error(
-            f"Prediction Failed: {e}"
-        )
-        st.stop()
+st.write("Rows After Cleaning:")
+st.write(len(df))
+   
 
     # ==========================================
     # SIDEBAR INSIGHTS
