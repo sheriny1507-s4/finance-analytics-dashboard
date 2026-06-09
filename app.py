@@ -207,25 +207,38 @@ if uploaded_file is not None:
     # ==========================================
     # STANDARDIZE COLUMNS
     # ==========================================
+    if amount_col:
+
     df.rename(
-        columns={description_col: "Description"},
+        columns={amount_col: "Amount"},
         inplace=True
     )
 
     df["Amount"] = (
-    df["Amount"]
-    .astype(str)
-    .str.replace(",", "")
-    .str.replace("₹", "")
-    .str.replace("$", "")
-)
+        df["Amount"]
+        .astype(str)
+        .str.replace(",", "")
+        .str.replace("₹", "")
+        .str.replace("$", "")
+    )
 
-df["Amount"] = pd.to_numeric(
-    df["Amount"],
-    errors="coerce"
-)
+    df["Amount"] = pd.to_numeric(
+        df["Amount"],
+        errors="coerce"
+    )
 
-df["Amount"] = df["Amount"].fillna(0)
+    df["Amount"] = df["Amount"].fillna(0)
+
+else:
+    df["Amount"] = 0
+
+# Date column
+if date_col:
+
+    df.rename(
+        columns={date_col: "Date"},
+        inplace=True
+    )
 
     if date_col:
 
